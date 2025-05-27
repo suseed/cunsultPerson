@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>개인고객 상담 DB</title>
+<style>
+    body{font-family:system-ui, sans-serif;margin:2rem;background:#f8f9fa;}
+    h1{margin-bottom:1rem}
+    .controls{margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:.5rem}
+    button,label{padding:.5rem .8rem;border:none;border-radius:4px;background:#0d6efd;color:#fff;cursor:pointer}
+    button.danger{background:#dc3545}
+    button.secondary{background:#6c757d}
+    table{width:100%;border-collapse:collapse;background:#fff}
+    th,td{border:1px solid #dee2e6;padding:.4rem;text-align:center}
+    th{background:#e9ecef}
+    tr:nth-child(even) td{background:#fafafa}
+    input[type="text"],input[type="datetime-local"],input[type="tel"]{width:100%;border:none;background:transparent;text-align:center}
+</style>
+
+<!-- jsPDF & html2canvas CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+<h1>개인고객 상담 DB</h1>
+
+<div class="controls">
+    <button onclick="addRow()">행 추가</button>
+
+    <label><input id="jsonFile" type="file" accept=".json" style="display:none" onchange="loadJSON(event)">JSON 불러오기</label>
+    <button onclick="saveJSON()">JSON 저장</button>
+
+    <button onclick="saveCSV()">CSV 저장</button>
+
+    <button onclick="printPage()" class="secondary">인쇄</button>
+    <button onclick="savePDF()" class="secondary">PDF 저장</button>
+</div>
+
+<table id="consultTable">
+    <thead>
+        <tr>
+            <th>이름</th>
+            <th>연락처</th>
+            <th>최초 상담자</th>
+            <th>담당자</th>
+            <th>관심과목</th>
+            <th>신청과목</th>
+            <th>상담내용</th>
+            <th>상담일시</th>
+            <th>삭제</th>
+        </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+function addRow(data = {}) {
+    const tbody = document.getElementById('tableBody');
+    const row = tbody.insertRow();
+    const fields = [
+        {key:'name', type:'text'},
+        {key:'phone', type:'tel'},
+        {key:'first', type:'text'},
+        {key:'manager', type:'text'},
+        {key:'interest', type:'text'},
+        {key:'apply', type:'text'},
+        {key:'content', type:'text'},
+        {key:'datetime', type:'datetime-local'}
+    ];
+    fields.forEach(f=>{
+        const cell = row.insertCell();
+        cell.innerHTML = `<input type="${f.type}" value="${data[f.key]??''}" />`;
+    });
+    const del = row.insertCell();
+    del.innerHTML = `<button class="danger" onclick="deleteRow(this)">삭제</button>`;
+}
+
+function deleteRow(btn){
+    btn.closest('tr').remove();
+}
+
+function gatherData(){
+    const rows = [...document.querySelectorAll('#tableBody tr')];
+    return rows.map(tr=>{
+        const cells = tr.querySelectorAll('input');
+        return {
+            name: cells[0].value.trim(),
+            phone: cells[1].value.trim(),
+            first: cells[2].value.trim(),
+            manager: cells[3].value.trim(),
+            interest: cells[4].value.trim(),
+            apply: cells[5].value.trim(),
+            content: cells[6].value.trim(),
+            datetime: cells[7].value
+        };
+    });
+}
+
+function saveJSON(){
+    const data = gatherData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    downloadBlob(blob, `consult_${today()}.json`);
+}
+
+function loadJSON(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = evt=>{
+        try{
+            const arr = JSON.parse(evt.target.result);
+            document.getElementById('tableBody').innerHTML='';
+            arr.forEach(addRow);
+        }catch(err){alert('JSON 형식 오류');}
+    };
+    reader.readAsText(file);
+}
+
+function saveCSV(){
+    const data = gatherData();
+    const headers = ['이름','연락처','최초 상담자','담당자','관심과목','신청과목','상담내용','상담일시'];
+    const csv = [headers.join(',')].concat(
+        data.map(o=>[
+            o.name, o.phone, o.first, o.manager, o.interest,
+            o.apply, `"${o.content.replace(/"/g,'""')}"`, o.datetime
+        ].join(','))
+    ).join('\r\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    downloadBlob(blob, `consult_${today()}.csv`);
+}
+
+function printPage(){
+    window.print();
+}
+
+async function savePDF(){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({orientation:'landscape', unit:'pt', format:'a4'});
+    const table = document.getElementById('consultTable');
+    const canvas = await html2canvas(table, {scale:2});
+    const imgData = canvas.toDataURL('image/png');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width*ratio, canvas.height*ratio);
+    pdf.save(`consult_${today()}.pdf`);
+}
+
+function downloadBlob(blob, filename){
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function today(){
+    const d = new Date();
+    return d.toISOString().slice(0,10);
+}
+
+// 빈 행 하나 미리 보여주기
+addRow();
+</script>
+</body>
+</html>
